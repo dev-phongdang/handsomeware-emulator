@@ -1,0 +1,11 @@
+{
+  "simulation": true,
+  "note": "No persistence was applied. This report shows what a real sample might do.",
+  "detected_os": "Linux",
+  "os_version": "#136~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul  3 15:42:07 UTC ",
+  "applicable_tactics": {
+    "Crontab": "crontab -e  →  @reboot <payload>",
+    "Systemd user service": "~/.config/systemd/user/<name>.service",
+    "Bashrc": "echo '<payload>' >> ~/.bashrc"
+  }
+}

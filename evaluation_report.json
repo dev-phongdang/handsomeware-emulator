@@ -1,0 +1,114 @@
+{
+  "campaign_id": "T4816-SIM",
+  "sandbox": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data",
+  "target_extensions": [
+    ".txt",
+    ".csv",
+    ".json",
+    ".pdf",
+    ".docx",
+    ".xlsx",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".log",
+    ".xml",
+    ".html"
+  ],
+  "encryption": {
+    "files_targeted": 7,
+    "files_encrypted": 7,
+    "files_failed": 0,
+    "bytes_encrypted": 3435,
+    "elapsed_seconds": 0.0,
+    "throughput_kb_s": 0,
+    "successes": [
+      {
+        "original": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/documents/config.json",
+        "encrypted": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/documents/config.json.locked",
+        "size_bytes": 61,
+        "sha256_before": "7e7a75b38e5b3391ca5936203f9c90f9a6b1953f1ebffdeb4a1baf4427595579"
+      },
+      {
+        "original": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/documents/notes.txt",
+        "encrypted": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/documents/notes.txt.locked",
+        "size_bytes": 50,
+        "sha256_before": "ab5868665e2bd0d7a415b590bf9aa1207df46352446630e626cafccd4a988782"
+      },
+      {
+        "original": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/documents/report_q3.txt",
+        "encrypted": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/documents/report_q3.txt.locked",
+        "size_bytes": 162,
+        "sha256_before": "f313e81847f257e48176c0948fe32bdcf68db103f18fe5a5b9f4eaa325e625ca"
+      },
+      {
+        "original": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/images/diagram.png",
+        "encrypted": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/images/diagram.png.locked",
+        "size_bytes": 2048,
+        "sha256_before": "2ddd5d6caab0f9a08831361750bd2b01fd261caf2f723ee0e837b59a91f1b91e"
+      },
+      {
+        "original": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/images/photo_001.jpg",
+        "encrypted": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/images/photo_001.jpg.locked",
+        "size_bytes": 1024,
+        "sha256_before": "b33fcaaee2a6cad7afd28a76ec123b911782c7977fe4a712e819de5c1d4f6a3e"
+      },
+      {
+        "original": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/reports/audit_2025.csv",
+        "encrypted": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/reports/audit_2025.csv.locked",
+        "size_bytes": 49,
+        "sha256_before": "752277e821ccc28903d84e865de7fd0d63844f93010e04d8a466b1c5f19b0a3a"
+      },
+      {
+        "original": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/reports/summary.txt",
+        "encrypted": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/reports/summary.txt.locked",
+        "size_bytes": 41,
+        "sha256_before": "1f75184f95c5aab8a296ae2478449e04a1b2b241b91cfd6baa7073ad028266a3"
+      }
+    ],
+    "failures": []
+  },
+  "decryption": {
+    "files_decrypted": 7,
+    "hash_match": 7,
+    "hash_mismatch": 0,
+    "elapsed_seconds": 0.007,
+    "details": [
+      {
+        "restored": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/documents/config.json",
+        "hash_match": true,
+        "error": ""
+      },
+      {
+        "restored": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/documents/notes.txt",
+        "hash_match": true,
+        "error": ""
+      },
+      {
+        "restored": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/documents/report_q3.txt",
+        "hash_match": true,
+        "error": ""
+      },
+      {
+        "restored": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/images/diagram.png",
+        "hash_match": true,
+        "error": ""
+      },
+      {
+        "restored": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/images/photo_001.jpg",
+        "hash_match": true,
+        "error": ""
+      },
+      {
+        "restored": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/reports/audit_2025.csv",
+        "hash_match": true,
+        "error": ""
+      },
+      {
+        "restored": "/sessions/rcw-016lpkjqwwjqgfsvgzwb5rgt/mnt/emulator/ransomware_simulator/test_data/reports/summary.txt",
+        "hash_match": true,
+        "error": ""
+      }
+    ]
+  }
+}
