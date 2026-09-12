@@ -48,7 +48,7 @@ def run_encryption() -> None:
     logger.info("═" * 60)
 
     # Safety gate
-    if not validate_environment(config.SANDBOX_DIR):
+    if not validate_environment(config, logger):
         logger.critical("Environment validation failed. Aborting.")
         sys.exit(1)
 
@@ -92,7 +92,7 @@ def run_decryption() -> None:
     logger.info("PHASE 2: DECRYPTION + VERIFICATION")
     logger.info("═" * 60)
 
-    cleanup = Cleanup(key=key, sandbox=config.SANDBOX_DIR)
+    cleanup = Cleanup(key=key, sandbox=config.SANDBOX_DIR, log_file=config.LOG_FILE)
     t0 = time.perf_counter()
     dec_results = cleanup.decrypt_all(_SESSION_ENC_RESULTS)
     elapsed_dec = time.perf_counter() - t0
