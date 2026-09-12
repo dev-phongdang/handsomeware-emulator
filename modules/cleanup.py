@@ -13,7 +13,6 @@ the contract statically.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +23,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import config
 from utils.logger import get_logger
 from utils.validator import is_within_sandbox
+from utils.hashing import sha256_file
 
 
 # ── Protocol — explicit contract for what decrypt_all() needs ─────────────────
@@ -90,14 +90,6 @@ class Cleanup:
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _sha256(path: Path) -> str:
-        h = hashlib.sha256()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-        return h.hexdigest()
-
     # ── Single-file decryption ────────────────────────────────────────────────
 
     def decrypt_file(
@@ -130,7 +122,7 @@ class Cleanup:
             plaintext  = self._aesgcm.decrypt(nonce, ciphertext, None)
             restored_path.write_bytes(plaintext)
 
-            actual_sha          = self._sha256(restored_path)
+            actual_sha          = sha256_file(restored_path)
             result.restored_path = str(restored_path)
             result.sha256_actual = actual_sha
             result.hash_match   = actual_sha == expected_sha256

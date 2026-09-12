@@ -10,7 +10,6 @@ Its SHA-256 hash is stored in EncryptionResult for later verification.
 """
 from __future__ import annotations
 
-import hashlib
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +20,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import config
 from utils.logger import get_logger
 from utils.validator import is_within_sandbox
+from utils.hashing import sha256_file
 
 logger = get_logger(__name__, log_file=config.LOG_FILE)
 
@@ -78,20 +78,12 @@ class FileEncryptor:
 
     # ── Encryption ────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _sha256(path: Path) -> str:
-        h = hashlib.sha256()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-        return h.hexdigest()
-
     def encrypt_file(self, path: Path) -> EncryptionResult:
         """Encrypt a single file. Returns EncryptionResult."""
         result = EncryptionResult(
             path=str(path),
             original_size=path.stat().st_size,
-            sha256_before=self._sha256(path),
+            sha256_before=sha256_file(path),
         )
 
         if not is_within_sandbox(path, self.sandbox):
