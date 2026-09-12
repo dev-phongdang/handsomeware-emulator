@@ -1,120 +1,106 @@
 """
-modules/ransom_note.py
-Drops a README_DECRYPT.txt in every directory that had files encrypted,
-and creates a persistence simulation report (no real persistence is applied).
+modules/ransom_note.py — Ransom note delivery.
+
+RansomNoteDropper places README_DECRYPT.txt in:
+  1. Every directory that contains at least one successfully encrypted file.
+  2. The sandbox root (always — even if no file was encrypted directly there).
+
+This mirrors real ransomware behaviour: a note is dropped alongside the
+victim files so the user sees the demand immediately in any folder they open.
+
+Design notes
+------------
+* Note content is generated at drop-time from config.RANSOM_CONTACT and
+  config.ATTACKER_ID — no hardcoded string in config.
+* Logger is instance-level (self._logger), same pattern as file_encryptor and
+  cleanup — no module-level logger global.
+* Written paths are returned so the orchestrator can hand them to
+  EvaluationCollector.record_note_drop() for timeline tracking.
 """
+
 from __future__ import annotations
 
-import json
-import platform
-import sys
 from pathlib import Path
-from datetime import datetime, timezone
 from typing import List
 
 import config
+from modules.file_encryptor import EncryptionResult
 from utils.logger import get_logger
 
-logger = get_logger(__name__, log_file=config.LOG_FILE)
 
-NOTE_TEMPLATE = """\
-╔══════════════════════════════════════════════════════════════╗
-║              !! YOUR FILES HAVE BEEN ENCRYPTED !!            ║
-║                   [EDUCATIONAL SIMULATOR]                    ║
-╚══════════════════════════════════════════════════════════════╝
-
-Campaign ID : {campaign_id}
-Timestamp   : {timestamp}
-Files locked: {file_count}
-
-YOUR FILES ARE NOT PERMANENTLY LOST.
-This is a controlled research simulation.
-The decryption key is held in memory by the orchestrator.
-
-─────────────────────────────────────────────────────────────
-HOW TO RESTORE (in this simulation):
-
-  python orchestrator.py --decrypt
-
-─────────────────────────────────────────────────────────────
-Contact (simulated) : {contact}
-DO NOT modify or delete encrypted (.locked) files.
-─────────────────────────────────────────────────────────────
-
-[T4816 Ransomware Behavior Learning Project]
-"""
-
-# What a real ransomware might attempt for persistence
-_PERSISTENCE_TACTICS = {
-    "windows": {
-        "Run key": r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
-        "Startup folder": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
-        "Scheduled task": "schtasks /create /tn T4816 /tr <payload> /sc onlogon",
-    },
-    "linux": {
-        "Crontab": "crontab -e  →  @reboot <payload>",
-        "Systemd user service": "~/.config/systemd/user/<name>.service",
-        "Bashrc": "echo '<payload>' >> ~/.bashrc",
-    },
-    "darwin": {
-        "LaunchAgent": "~/Library/LaunchAgents/com.t4816.plist",
-        "Login item": "System Settings → General → Login Items",
-    },
-}
+def _build_note_content() -> str:
+    """Generate the ransom note body from config constants."""
+    return (
+        f"=== RANSOMWARE SIMULATOR — EDUCATIONAL USE ONLY ===\n"
+        f"\n"
+        f"Campaign ID : {config.ATTACKER_ID}\n"
+        f"Contact     : {config.RANSOM_CONTACT}\n"
+        f"\n"
+        f"Your files inside the test_data/ directory have been encrypted.\n"
+        f"\n"
+        f"This is a CONTROLLED LABORATORY SIMULATION.\n"
+        f"No real harm has been done. All files can be restored.\n"
+        f"\n"
+        f"To decrypt, run:\n"
+        f"    python orchestrator.py --decrypt\n"
+        f"\n"
+        f"=== THIS IS NOT REAL RANSOMWARE ===\n"
+    )
 
 
 class RansomNoteDropper:
-    """Drops ransom notes and a persistence-simulation report."""
+    """
+    Drops ransom notes into every affected directory.
 
-    def drop_notes(self, encrypted_results: List) -> List[Path]:
+    Parameters
+    ----------
+    sandbox:  Sandbox root — always receives a note regardless of results.
+    log_file: Optional log file path; injected by the orchestrator.
+    """
+
+    def __init__(self, sandbox: Path, log_file: Path | None = None) -> None:
+        self._sandbox = sandbox
+        self._logger  = get_logger(__name__, log_file=log_file)
+
+    def drop_notes(self, enc_results: List[EncryptionResult]) -> List[Path]:
         """
-        Place README_DECRYPT.txt in each directory that had files encrypted.
-        Returns list of note paths created.
+        Write README_DECRYPT.txt into every directory that had at least one
+        file successfully encrypted, plus the sandbox root.
+
+        Parameters
+        ----------
+        enc_results: Return value of FileEncryptor.encrypt_all() — one entry
+                     per discovered file, successful or not.
+
+        Returns
+        -------
+        List of Paths where a note was actually written (write failures are
+        logged as warnings and excluded from the return list).
         """
-        dirs_hit: set[Path] = {
-            Path(r.encrypted_path).parent
-            for r in encrypted_results
-            if r.success
-        }
-        note_paths: List[Path] = []
-        file_count = sum(1 for r in encrypted_results if r.success)
+        # Collect unique target directories from successful encryptions.
+        # Always include sandbox root so at least one note is always written.
+        affected_dirs: set[Path] = {self._sandbox}
+        for r in enc_results:
+            if r.success and r.encrypted_path:
+                affected_dirs.add(Path(r.encrypted_path).parent)
 
-        note_content = NOTE_TEMPLATE.format(
-            campaign_id=config.ATTACKER_ID,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            file_count=file_count,
-            contact=config.RANSOM_CONTACT,
-        )
+        content = _build_note_content()
+        written: List[Path] = []
 
-        for directory in sorted(dirs_hit):
+        for directory in sorted(affected_dirs):   # sorted → deterministic log order
             note_path = directory / config.RANSOM_NOTE_NAME
-            note_path.write_text(note_content, encoding="utf-8")
-            note_paths.append(note_path)
-            logger.info("NOTE dropped → %s", note_path)
+            try:
+                note_path.write_text(content, encoding="utf-8")
+                self._logger.debug("Note dropped: %s", note_path)
+                written.append(note_path)
+            except OSError as exc:
+                self._logger.warning(
+                    "Could not write ransom note to '%s': %s", note_path, exc
+                )
 
-        return note_paths
-
-    def write_persistence_report(self, sandbox: Path) -> Path:
-        """
-        Write a JSON report of persistence techniques that WOULD be used
-        on the current OS. Nothing is actually applied to the system.
-        """
-        os_key = "darwin" if sys.platform == "darwin" else (
-            "windows" if sys.platform.startswith("win") else "linux"
+        self._logger.info(
+            "Ransom note dropped in %d director%s.",
+            len(written),
+            "y" if len(written) == 1 else "ies",
         )
-        tactics = _PERSISTENCE_TACTICS.get(os_key, {})
-
-        report = {
-            "simulation": True,
-            "note": "No persistence was applied. This report shows what a real sample might do.",
-            "detected_os": platform.system(),
-            "os_version": platform.version(),
-            "applicable_tactics": tactics,
-        }
-
-        report_path = sandbox / config.PERSISTENCE_REPORT_NAME
-        report_path.write_text(
-            json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
-        logger.info("Persistence simulation report → %s", report_path)
-        return report_path
+        return written

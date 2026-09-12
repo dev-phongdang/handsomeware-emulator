@@ -1,69 +1,55 @@
 """
-utils/logger.py
-Centralized logging for ransomware simulator.
-All modules should import get_logger() from here.
+utils/logger.py — Structured logger with millisecond UTC timestamps.
+
+Standard logging.Formatter's datefmt has no sub-second directive, so we
+subclass it and override formatTime() to emit UTC time at ms precision.
 """
 
 import logging
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 
 class _MsFormatter(logging.Formatter):
-    """Logging formatter with millisecond-precision timestamps.
+    """Formatter that emits UTC timestamps with millisecond precision."""
 
-    Standard logging.Formatter uses time.strftime() which does not support
-    sub-second precision. This subclass overrides formatTime() to append
-    milliseconds, producing timestamps like: 2025-01-15 10:23:41.847
-
-    Millisecond precision is required for evaluation: detection time deltas
-    between file encryption events and EDR alerts may be sub-second.
-    """
-
-    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+    def formatTime(self, record, datefmt=None):  # noqa: N802 (stdlib naming)
         return (
-            datetime.fromtimestamp(record.created, tz=timezone.utc).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            datetime.fromtimestamp(record.created, tz=timezone.utc)
+            .strftime("%Y-%m-%d %H:%M:%S")
             + f".{int(record.msecs):03d}"
         )
 
 
-_FMT = _MsFormatter("[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s")
+_FMT     = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+_DATEFMT = None   # handled inside _MsFormatter.formatTime
 
 
 def get_logger(name: str, log_file: Path | None = None) -> logging.Logger:
-    """Return a named logger with console (INFO+) and optional file (DEBUG+) handlers.
-
-    Args:
-        name:     Logger name, typically the module name (e.g. "encryptor").
-        log_file: If provided, DEBUG-level output is also written to this file.
-                  The parent directory is created automatically if needed.
-
-    Returns:
-        Configured logging.Logger instance. Safe to call multiple times with
-        the same name — handlers are only attached once.
     """
-    logger = logging.getLogger(name)
-    if logger.handlers:
-        return logger  # already configured — avoid duplicate handlers
+    Return a logger for *name*.
 
-    logger.setLevel(logging.DEBUG)
+    Parameters
+    ----------
+    name:     module __name__ or any label
+    log_file: optional path to write a file handler alongside stderr
+    """
+    logger    = logging.getLogger(name)
+    formatter = _MsFormatter(fmt=_FMT, datefmt=_DATEFMT)
 
-    # Console handler — INFO and above only (avoid cluttering stdout with DEBUG)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(_FMT)
-    logger.addHandler(ch)
+    if not logger.handlers:
+        # Console handler
+        sh = logging.StreamHandler()
+        sh.setFormatter(formatter)
+        logger.addHandler(sh)
 
-    # File handler — DEBUG and above for full audit trail
-    if log_file is not None:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        fh = logging.FileHandler(log_file, encoding="utf-8")
-        fh.setLevel(logging.DEBUG)
-        fh.setFormatter(_FMT)
-        logger.addHandler(fh)
+        # File handler (caller supplies the path)
+        if log_file is not None:
+            fh = logging.FileHandler(log_file, encoding="utf-8")
+            fh.setFormatter(formatter)
+            logger.addHandler(fh)
+
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
 
     return logger
-
