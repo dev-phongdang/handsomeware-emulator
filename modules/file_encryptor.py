@@ -21,7 +21,6 @@ Design notes
 
 from __future__ import annotations
 
-import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -46,16 +45,16 @@ def _utc_now() -> str:
 # ---------------------------------------------------------------------------
 @dataclass
 class EncryptionResult:
-    original_path:    str
-    encrypted_path:   str
-    sha256_before:    str
-    sha256_after:     str       # sha256 of the encrypted blob (for audit log)
-    success:          bool
+    original_path: str
+    encrypted_path: str
+    sha256_before: str
+    sha256_after: str  # sha256 of the encrypted blob (for audit log)
+    success: bool
     # --- fields added for evaluation ---
-    original_size:    int  = 0  # bytes of the plaintext file before encryption
+    original_size: int = 0  # bytes of the plaintext file before encryption
     original_removed: bool = False  # True if the original file was deleted
-    encrypted_at:     str  = ""     # ISO UTC timestamp recorded after encryption
-    error:            str  = ""
+    encrypted_at: str = ""  # ISO UTC timestamp recorded after encryption
+    error: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -74,12 +73,10 @@ class FileEncryptor:
 
     def __init__(self, key: bytes, sandbox: Path, log_file: Path | None = None) -> None:
         if len(key) != config.KEY_SIZE:
-            raise ValueError(
-                f"Key must be {config.KEY_SIZE} bytes, got {len(key)}"
-            )
-        self._aesgcm  = AESGCM(key)
+            raise ValueError(f"Key must be {config.KEY_SIZE} bytes, got {len(key)}")
+        self._aesgcm = AESGCM(key)
         self._sandbox = sandbox
-        self._logger  = get_logger(__name__, log_file=log_file)
+        self._logger = get_logger(__name__, log_file=log_file)
 
     # ------------------------------------------------------------------
     # Discovery
@@ -87,7 +84,8 @@ class FileEncryptor:
     def discover_files(self) -> List[Path]:
         """Return all files matching TARGET_EXTENSIONS inside the sandbox."""
         return [
-            p for p in self._sandbox.rglob("*")
+            p
+            for p in self._sandbox.rglob("*")
             if p.is_file() and p.suffix.lower() in config.TARGET_EXTENSIONS
         ]
 
@@ -114,10 +112,10 @@ class FileEncryptor:
 
         try:
             original_size = path.stat().st_size
-            sha_before    = sha256_file(path)
-            plaintext     = path.read_bytes()
+            sha_before = sha256_file(path)
+            plaintext = path.read_bytes()
 
-            nonce      = os.urandom(config.NONCE_SIZE)
+            nonce = os.urandom(config.NONCE_SIZE)
             ciphertext = self._aesgcm.encrypt(nonce, plaintext, None)
 
             # Append .locked — preserves original extension for clean restore
@@ -125,7 +123,7 @@ class FileEncryptor:
             enc_path.write_bytes(nonce + ciphertext)
 
             sha_after = sha256_file(enc_path)
-            ts        = _utc_now()   # timestamp right after successful write
+            ts = _utc_now()  # timestamp right after successful write
 
             # Remove original — PermissionError expected on cloud sandbox mounts
             removed = False
@@ -135,7 +133,8 @@ class FileEncryptor:
             except PermissionError:
                 self._logger.warning(
                     "Could not delete original '%s' (read-only mount). "
-                    "On a real filesystem the original would be removed.", path
+                    "On a real filesystem the original would be removed.",
+                    path,
                 )
 
             self._logger.debug("Encrypted: %s → %s", path.name, enc_path.name)

