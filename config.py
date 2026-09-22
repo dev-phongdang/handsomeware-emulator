@@ -46,7 +46,7 @@ TARGET_EXTENSIONS: frozenset[str] = frozenset(
 # ── Ransom note ───────────────────────────────────────────────────────────────
 RANSOM_NOTE_NAME = "README_DECRYPT.txt"
 RANSOM_CONTACT = "sim-research@lab.local"  # fictional address
-ATTACKER_ID = "T4816-SIM"  # campaign identifier
+ATTACKER_ID = "T1486-SIMULATOR"  # campaign identifier
 
 # ── Persistence simulation ────────────────────────────────────────────────────
 # No real persistence is created; only a JSON report of what WOULD be applied.

