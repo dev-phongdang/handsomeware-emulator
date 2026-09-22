@@ -3,6 +3,10 @@ orchestrator.py — Top-level entry point for the ransomware simulator.
 
 Usage
 -----
+  # Seed test_data/ with sample files (first-time setup)
+  python orchestrator.py --seed
+  python orchestrator.py --seed --force   # overwrite existing files
+
   # Encrypt
   python orchestrator.py
 
@@ -33,6 +37,7 @@ from modules.cleanup import Cleanup
 from modules.evaluation import EvaluationCollector
 from modules.file_encryptor import FileEncryptor
 from modules.ransom_note import RansomNoteDropper
+from modules.seeder import Seeder
 from utils.logger import get_logger
 from utils.validator import validate_environment
 
@@ -40,7 +45,6 @@ logger = get_logger(__name__, log_file=config.LOG_FILE)
 
 # Separate JSON file: key + raw results (for decrypt phase replay)
 _SESSION_FILE = config.BASE_DIR / "session.json"
-
 
 # Lightweight record satisfying the EncryptedFileRecord Protocol.
 # Rebuilt from session.json during the decrypt phase so cleanup.decrypt_all()
@@ -83,6 +87,50 @@ def _save_session(key: bytes, enc_results) -> None:
     }
     _SESSION_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
     logger.info("Session data saved to '%s'", _SESSION_FILE)
+
+
+# ---------------------------------------------------------------------------
+# Seed phase
+# ---------------------------------------------------------------------------
+def run_seed(force: bool = False) -> None:
+    """
+    Populate test_data/ with sample files via Seeder.
+
+    Environment checks performed here (subset of validate_environment):
+    SANDBOX_DIR may not exist yet so the full validator cannot run.
+    """
+    logger.info("=== SEED PHASE ===")
+
+    # CHECK 1 — lab identity env var
+    if os.environ.get("LAB_ENVIRONMENT") != "1":
+        logger.critical(
+            "SEED ABORTED — LAB_ENVIRONMENT is not '1'. Set it before seeding."
+        )
+        sys.exit(1)
+
+    # CHECK 2 — sentinel file
+    sentinel = config.BASE_DIR / ".lab_marker"
+    if not sentinel.exists():
+        logger.critical("SEED ABORTED — sentinel file '%s' not found.", sentinel)
+        sys.exit(1)
+
+    # CHECK 5 — path-traversal guard (SANDBOX_DIR inside BASE_DIR)
+    try:
+        config.SANDBOX_DIR.resolve().relative_to(config.BASE_DIR.resolve())
+    except ValueError:
+        logger.critical(
+            "SEED ABORTED — SANDBOX_DIR '%s' is not under BASE_DIR '%s'.",
+            config.SANDBOX_DIR, config.BASE_DIR,
+        )
+        sys.exit(1)
+
+    seeder = Seeder(sandbox=config.SANDBOX_DIR, log_file=config.LOG_FILE)
+    result = seeder.seed(force=force)
+
+    if result.aborted:
+        sys.exit(1)
+    if result.skipped:
+        sys.exit(0)
 
 
 # ---------------------------------------------------------------------------
@@ -343,6 +391,14 @@ def main() -> None:
         description="Ransomware Behaviour Simulator (educational)"
     )
     parser.add_argument(
+        "--seed", action="store_true",
+        help="Populate test_data/ with sample files (first-time setup)",
+    )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="[--seed] overwrite existing target files in sandbox",
+    )
+    parser.add_argument(
         "--decrypt", action="store_true", help="Run decryption/restore phase"
     )
     parser.add_argument(
@@ -367,7 +423,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.add_edr:
+    if args.seed:
+        run_seed(force=args.force)
+    elif args.add_edr:
         run_add_edr(
             detected=args.detected,
             detection_time=args.detection_time,
