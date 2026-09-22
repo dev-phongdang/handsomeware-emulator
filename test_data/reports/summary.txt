@@ -1,3 +1,0 @@
-Audit complete.
-Total: 1550
-Status: PASS

@@ -1,3 +1,0 @@
-Meeting notes:
-- Deploy on Friday
-- Review PR #42

